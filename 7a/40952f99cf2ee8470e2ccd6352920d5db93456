@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7a40952f99cf2ee8470e2ccd6352920d5db93456",
+  "prompts": {},
+  "humans": {
+    "h_90f09615bf5054": {
+      "author": "sunhaibo <sunhaibo126@126.com>"
+    }
+  }
+}
