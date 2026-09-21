@@ -1,6 +1,8 @@
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -84,39 +86,76 @@ public class ProcTranslator {
 
     // ==================== 主翻译方法 ====================
 
+    /** 日志开关：调试时可关闭 */
+    private static boolean debugLog = true;
+
+    /** 日志格式: [ProcTranslator] HH:mm:ss.SSS - 级别 - 消息 */
+    private static final SimpleDateFormat LOG_TIME = new SimpleDateFormat("HH:mm:ss.SSS");
+
+    private static void log(String message) {
+        if (debugLog) {
+            System.out.println("[ProcTranslator] " + LOG_TIME.format(new Date()) + " - " + message);
+        }
+    }
+
     /**
      * 解析并翻译存储过程源码
      */
     public static TranslationResult translate(String procSql) {
+        log("===== 开始翻译存储过程 =====");
+        log("[INFO] 输入SQL长度: " + (procSql == null ? 0 : procSql.length()) + " 字符");
         TranslationResult result = new TranslationResult();
         String sql = stripComments(procSql);
+        log("[INFO] 去除注释后SQL长度: " + sql.length() + " 字符");
 
         // 1. 提取过程名
         Matcher nameMatcher = PROC_NAME_PATTERN.matcher(sql);
         if (!nameMatcher.find()) {
             result.warnings.add("未找到PROCEDURE声明，可能不是存储过程文件");
+            log("[ERROR] 未找到PROCEDURE声明，请检查文件内容是否为Oracle存储过程");
             return result;
         }
         result.procName = nameMatcher.group(1);
         result.className = "Proc" + capitalize(toCamelCase(result.procName));
+        log("[INFO] 识别存储过程: " + result.procName + " -> 生成类名 " + result.className);
 
         // 2. 提取参数（括号内）
         extractParams(sql, result);
+        log("[INFO] 参数解析完成: IN参数 " + result.inParams.size() + " 个, OUT参数 " + result.outParams.size() + " 个");
+        for (ProcParam p : result.inParams) {
+            log("      IN 参数: " + p.name + " (" + p.type + ") " + p.comment);
+        }
+        for (ProcParam p : result.outParams) {
+            log("      OUT 参数: " + p.name + " (" + p.type + ") " + p.comment);
+        }
+        if (result.inParams.isEmpty() && result.outParams.isEmpty()) {
+            log("[WARN] 未解析到任何参数，请检查参数声明格式（如 p_name IN VARCHAR2,）");
+        }
 
         // 3. 提取变量声明（BEGIN前）
         int beginIndex = sql.toUpperCase().indexOf("BEGIN");
+        log("[INFO] BEGIN关键字位置: " + beginIndex);
         if (beginIndex > 0) {
             String declSection = sql.substring(0, beginIndex);
+            List<String> declaredVars = new ArrayList<>();
             for (String line : declSection.split("\\n")) {
                 Matcher varMatcher = VAR_PATTERN.matcher(line.trim());
                 if (varMatcher.matches() && !isReserved(varMatcher.group(1))) {
-                    // 变量声明已在逻辑中按需生成
+                    declaredVars.add(varMatcher.group(1) + " " + varMatcher.group(2));
                 }
             }
+            log("[INFO] 变量声明区识别 " + declaredVars.size() + " 个变量: " + declaredVars);
         }
 
         // 4. 翻译BEGIN..END主体逻辑
+        log("[INFO] 开始翻译主体逻辑 (BEGIN 位置 " + beginIndex + ")");
         result.logicCode = translateBody(sql, beginIndex, result);
+        log("[INFO] 主体逻辑翻译完成, 生成代码 " + result.logicCode.length() + " 字符");
+        log("===== 翻译完成 =====");
+        log("[INFO] 警告数: " + result.warnings.size());
+        for (String w : result.warnings) {
+            log("[WARN] " + w);
+        }
 
         return result;
     }
@@ -128,6 +167,7 @@ public class ProcTranslator {
         int openParen = sql.indexOf('(');
         int closeParen = findMatchingParen(sql, openParen);
         if (openParen < 0 || closeParen < 0) {
+            log("[WARN] 未找到参数括号 ( 或匹配的 ) ，参数解析跳过");
             return;
         }
         String paramsSection = sql.substring(openParen + 1, closeParen);
