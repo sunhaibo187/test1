@@ -5,6 +5,7 @@ import java.util.Map;
 /**
  * JMeter参数设置工具类
  * 用于批量设置和配置JMeter接口测试参数
+ * 备注：湖南测试
  */
 public class JmeterParamSetter {
 
